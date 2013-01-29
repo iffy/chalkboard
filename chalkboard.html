@@ -2,68 +2,14 @@
 <html ng-app="chalkboard">
     <head>
         <title>Chalkboard</title>
-        <script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.0.4/angular.min.js"></script>
-        <script src="http://code.jquery.com/jquery-1.9.0.js"></script>
-        <script src="http://code.jquery.com/ui/1.10.0/jquery-ui.js"></script>
-        <script>
-            angular.module('chalkboard', []).
-                directive('board', function() {
-                    return {
-                        restrict: 'E',
-                        transclude: true,
-                        scope: {},
-                        controller: function($scope, $element) {
-                            $scope.stickies = [];
-                            
-                            $scope.createSticky = function() {
-                                console.log('createSticky');
-                                console.log($scope.stickies);
-                                $scope.stickies.push({
-                                    text: angular.copy($scope.stickyText),
-                                    x: 100,
-                                    y: 20});
-                                $scope.stickyText = '';
-                            };
-                        },
-                        template:
-                            '<div>' +
-                                '<div class="chalkboard">' +
-                                    '<sticky ng-repeat="sticky in stickies" text="sticky.text" x="sticky.x" y="sticky.y"/>' +
-                                '</div>' +
-                                '<form ng-submit="createSticky()">' +
-                                    '<input type="text" ng-model="stickyText">' +
-                                    '<input type="submit" value="Add">' +
-                                '</form>' +
-                            '</div>',
-                        replace: true
-                    };
-                }).
-                directive('sticky', function() {
-                    var onDrag = function(event, ui) {
-                        var thing = model
-                    };
-                    return {
-                        require: '^board',
-                        restrict: 'E',
-                        transclude: false,
-                        scope: { text: '=', x: '=', y: '=' },
-                        link: function(scope, element, attrs, ctrl) {
-                            var onDrag = function(event, ui) {
-                                var thing = ctrl;
-                                thing.x = Math.round(ui.position.left);
-                                thing.y = Math.round(ui.position.top);
-                                console.log(thing);
-                                scope.$apply();
-                            };
-                            $(element).draggable({ drag: onDrag, grid:null });
-                        },
-                        template:
-                            '<div class="sticky" style="">{{text}} ({{x}}, {{y}})</div>',
-                        replace:true
-                    }
-                });
-        </script>
         <style>
+            * {
+                margin: 0;
+                padding: 0;
+            }
+            body {
+                background: #000;
+            }
             div.sticky {
                 background: #ffeeaa;
                 display: block;
@@ -71,14 +17,109 @@
                 padding: 12px;
                 width: 150px;
             }
+            div.sticky .text {
+                display: inline-block;
+            }
+            div.sticky .handle {
+                background: #fff;
+                width: 16px;
+                height: 16px;
+                display: inline-block;
+            }
             div.chalkboard {
-                width: 800px;
-                height: 600px;
+                width: 1024px;
+                height: 768px;
                 background: #001100;
             }
         </style>
     </head>
     <body>
-        <board></board>
+        <div id="chalkboard"></div>
+        <script src="http://code.jquery.com/jquery-1.9.0.js"></script>
+        <script src="http://underscorejs.org/underscore-min.js"></script>
+        <script src="http://documentcloud.github.com/backbone/backbone-min.js"></script>
+        <script src="http://code.jquery.com/ui/1.10.0/jquery-ui.js"></script>
+        <script>
+            $(function() {
+                var Sticky = Backbone.Model.extend({
+                    defaults: function() {
+                        return {
+                            'text': 'To do',
+                            'x': 0,
+                            'y': 0
+                        };
+                    }
+                });
+                
+                var StickyCollection = Backbone.Collection.extend({
+                    model: Sticky
+                });
+                
+                
+                var StickyView = Backbone.View.extend({
+                    tagName: 'div',
+                    events: {
+                        'drag': 'drag',
+                    },
+                    template: _.template('' +
+                                         '<div class="text"><div class="handle"></div><%- text %></div>'),
+                    initialize: function() {
+                        this.parent = this.options.parent;
+                        this.model.bind('change', this.render, this);
+                    },
+                    render: function() {
+                        this.$el.html(this.template(this.model.toJSON()));
+                        this.$el.draggable({
+                            distance: 20,
+                            stack: '.sticky',
+                            containment: this.parent.$el,
+                            handle: '.handle'
+                        });
+                        this.$el.addClass('sticky');
+                        this.$el.css({
+                            top: this.model.get('y'),
+                            left: this.model.get('x')
+                        });
+                        return this.$el;
+                    },
+                    drag: function(ev) {
+                        var pos = this.$el.position();
+                        this.model.set({'x': pos.left, 'y': pos.top});
+                    }
+                });
+                
+                var ChalkboardView = Backbone.View.extend({
+                    events: {
+                        'dblclick': "create",
+                    },
+                    initialize: function() {
+                        this.$el.addClass('chalkboard');
+                        this.collection.bind('add', this.addOne, this);
+                        this.render();
+                    },
+                    render: function() {
+                    },
+                    create: function(ev) {
+                        var sticky = new Sticky({x: ev.offsetX, y: ev.offsetY});
+                        this.collection.add(sticky);
+                    },
+                    addOne: function(sticky) {
+                        var view = new StickyView({model: sticky, parent: this});
+                        this.$el.append(view.$el);
+                        view.render();
+                    }
+                });
+                
+                stickies = new StickyCollection;
+                
+                new ChalkboardView({
+                    'el': '#chalkboard',
+                    'collection': stickies
+                });
+                
+                stickies.add({text: 'Foom', x: 100, y: 200});
+                stickies.add({text: "Something else that needs to happen", x: 150, y: 300});
+            });
+        </script>
     </body>
 </html>
