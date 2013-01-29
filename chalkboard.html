@@ -1,0 +1,84 @@
+<!doctype html>
+<html ng-app="chalkboard">
+    <head>
+        <title>Chalkboard</title>
+        <script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.0.4/angular.min.js"></script>
+        <script src="http://code.jquery.com/jquery-1.9.0.js"></script>
+        <script src="http://code.jquery.com/ui/1.10.0/jquery-ui.js"></script>
+        <script>
+            angular.module('chalkboard', []).
+                directive('board', function() {
+                    return {
+                        restrict: 'E',
+                        transclude: true,
+                        scope: {},
+                        controller: function($scope, $element) {
+                            $scope.stickies = [];
+                            
+                            $scope.createSticky = function() {
+                                console.log('createSticky');
+                                console.log($scope.stickies);
+                                $scope.stickies.push({
+                                    text: angular.copy($scope.stickyText),
+                                    x: 100,
+                                    y: 20});
+                                $scope.stickyText = '';
+                            };
+                        },
+                        template:
+                            '<div>' +
+                                '<div class="chalkboard">' +
+                                    '<sticky ng-repeat="sticky in stickies" text="sticky.text" x="sticky.x" y="sticky.y"/>' +
+                                '</div>' +
+                                '<form ng-submit="createSticky()">' +
+                                    '<input type="text" ng-model="stickyText">' +
+                                    '<input type="submit" value="Add">' +
+                                '</form>' +
+                            '</div>',
+                        replace: true
+                    };
+                }).
+                directive('sticky', function() {
+                    var onDrag = function(event, ui) {
+                        var thing = model
+                    };
+                    return {
+                        require: '^board',
+                        restrict: 'E',
+                        transclude: false,
+                        scope: { text: '=', x: '=', y: '=' },
+                        link: function(scope, element, attrs, ctrl) {
+                            var onDrag = function(event, ui) {
+                                var thing = ctrl;
+                                thing.x = Math.round(ui.position.left);
+                                thing.y = Math.round(ui.position.top);
+                                console.log(thing);
+                                scope.$apply();
+                            };
+                            $(element).draggable({ drag: onDrag, grid:null });
+                        },
+                        template:
+                            '<div class="sticky" style="">{{text}} ({{x}}, {{y}})</div>',
+                        replace:true
+                    }
+                });
+        </script>
+        <style>
+            div.sticky {
+                background: #ffeeaa;
+                display: block;
+                position: absolute;
+                padding: 12px;
+                width: 150px;
+            }
+            div.chalkboard {
+                width: 800px;
+                height: 600px;
+                background: #001100;
+            }
+        </style>
+    </head>
+    <body>
+        <board></board>
+    </body>
+</html>
