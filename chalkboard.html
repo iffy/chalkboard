@@ -30,7 +30,6 @@
             }
             div.sticky textarea {
                 width: 126px;
-                min-height: 200px;
                 border: 0px;
                 background: transparent;
             }
@@ -101,11 +100,13 @@
                         }));
                         this.$el.addClass('sticky');
                         this.$el.css({
-                            top: parseInt(this.model.get('y') / this.parent.scale),
-                            left: parseInt(this.model.get('x') / this.parent.scale),
                             position: 'absolute',
                            'z-index': zindex + 1
                         });
+                        this.$el.animate({
+                            left: parseInt(this.model.get('x') / this.parent.scale),
+                            top: parseInt(this.model.get('y') / this.parent.scale),
+                        }, 'slow');
                         return this.$el;
                     },
                     dragstop: function(ev) {
@@ -113,6 +114,20 @@
                         this.model.set({
                             'x': parseInt(pos.left),
                             'y': parseInt(pos.top)
+                        });
+                        this.updateServer();
+                    },
+                    updateServer: function() {
+                        var sticky = this.model;
+                        $.ajax(window.location.href, {
+                            type: 'post',
+                            data: {
+                                'action': 'update',
+                                'x': sticky.get('x'),
+                                'y': sticky.get('y'),
+                                'note': sticky.get('note'),
+                                'id': sticky.get('id')
+                            }
                         });
                     },
                     startEditing: function(ev) {
@@ -127,6 +142,7 @@
                     },
                     saveAndStopEditing: function(ev) {
                         this.model.set({'note': this.$('.edit').val()});
+                        this.updateServer();
                         this.stopEditing();
                     },
                     stopEditing: function(ev) {
@@ -151,7 +167,6 @@
                         this.$el.append(this.chalkboard);
                         
                         this.collection.bind('add', this.addOne, this);
-                        this.collection.bind('change', this.updateSticky, this);
                         this.render();
                         $(window).resize(this.resizeHappened.bind(this));
                         this.resizeMe();
@@ -200,18 +215,6 @@
                         var view = new StickyView({model: sticky, parent: this});
                         this.chalkboard.append(view.$el);
                         view.render();
-                    },
-                    updateSticky: function(sticky) {
-                        $.ajax(window.location.href, {
-                            type: 'post',
-                            data: {
-                                'action': 'update',
-                                'x': sticky.get('x'),
-                                'y': sticky.get('y'),
-                                'note': sticky.get('note'),
-                                'id': sticky.get('id')
-                            }
-                        });
                     }
                 });
                 

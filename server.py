@@ -130,6 +130,13 @@ class DatabaseBoardStore(object):
         return d.addCallback(self.getSticky, board_id)
 
 
+    def removeSticky(self, board_id, sticky_id):
+        delete = self.formatRawQuery('''delete from sticky where
+                                        board_id=%(param)s and id=%(param)s''')
+        d = self.runQuery(delete, (board_id, sticky_id))
+        return d.addCallback(lambda x:sticky_id)
+
+
 
 class EventStoreWrapper(object):
     """
