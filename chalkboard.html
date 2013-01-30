@@ -138,6 +138,10 @@
                         var button = $('<input type="button" value="Save">');
                         this.$('.note').append(button);
                         button.click(this.saveAndStopEditing.bind(this));
+                        
+                        var delbutton = $('<input type="button" value="Trash">');
+                        this.$('.note').append(delbutton);
+                        delbutton.click(this.deleteMe.bind(this));
                         return false;
                     },
                     saveAndStopEditing: function(ev) {
@@ -147,6 +151,15 @@
                     },
                     stopEditing: function(ev) {
                         this.render();
+                    },
+                    deleteMe: function(ev) {
+                        $.ajax(window.location.href, {
+                            type: 'post',
+                            data: {
+                                'action': 'remove',
+                                'id': this.model.get('id')
+                            }
+                        });
                     }
                 });
                 
@@ -160,6 +173,7 @@
                     minimumScale: 0.5,
                     scale: 1.0,
                     initialize: function() {
+                        this.views = [];
                         this.resizeTimer = null;
                         this.$el.addClass('chalkboard-container');
                         this.chalkboard = $('<div>');
@@ -167,6 +181,7 @@
                         this.$el.append(this.chalkboard);
                         
                         this.collection.bind('add', this.addOne, this);
+                        this.collection.bind('remove', this.removeOne, this);
                         this.render();
                         $(window).resize(this.resizeHappened.bind(this));
                         this.resizeMe();
@@ -215,6 +230,15 @@
                         var view = new StickyView({model: sticky, parent: this});
                         this.chalkboard.append(view.$el);
                         view.render();
+                        this.views.push(view);
+                    },
+                    removeOne: function(sticky) {
+                        var view = _.filter(this.views, function(view) {
+                            return view.model == sticky;
+                        })[0];
+                        view.$el.remove();
+                        var i = this.views.indexOf(view);
+                        this.views.splice(i, 1);
                     }
                 });
                 
@@ -229,8 +253,12 @@
                 function addStickyReceived(sticky) {
                     stickies.add(JSON.parse(sticky.data))
                 }
-                function removeStickyReceived(sticky) {
-                    console.log('remove: ' + sticky.data);
+                function removeStickyReceived(ev) {
+                    var data = JSON.parse(ev.data);
+                    var sticky = stickies.filter(function(x) {
+                        return x.get('id') == data;
+                    })[0];
+                    stickies.remove(sticky);
                 }
                 function updateStickyReceived(ev) {
                     var data = JSON.parse(ev.data);

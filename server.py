@@ -109,7 +109,6 @@ class DatabaseBoardStore(object):
 
 
     def _gotOneRow(self, row):
-        log.msg('Got row: %r' % (row,))
         row = row[0]
         id, board_id, updated, note, x, y = row
         return {
@@ -170,7 +169,6 @@ class EventStoreWrapper(object):
     def emit(self, board_id, action, data):
         for s in list(self.subscriptions[board_id]):
             try:
-                log.msg('emit %r %r %r' % (board_id, action, data))
                 s(action, data)
             except Exception as e:
                 print 'Error sending to subscription %s' % (e,)
@@ -323,7 +321,6 @@ class StickyFeed(Resource):
 
 
     def eventReceived(self, request, event, data):
-        log.msg('eventReceived %r %r %r' % (request, event, data))
         request.write(sseMsg(event, data))
 
 
