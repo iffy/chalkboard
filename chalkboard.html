@@ -14,31 +14,32 @@
                 background: #ffeeaa;
                 display: block;
                 position: absolute;
-                padding: 12px;
                 width: 150px;
+                box-shadow: #000 0px 0px 6px;
             }
             div.sticky .text {
-                display: inline-block;
+                padding: 0px 12px 12px;
             }
             div.sticky .handle {
-                background: #fff;
-                width: 16px;
+                background: rgba(255, 255, 255, 0.5);
                 height: 16px;
-                display: inline-block;
+            }
+            div.sticky textarea {
+                width: 126px;
             }
             div.chalkboard {
-                width: 1024px;
-                height: 768px;
-                background: #001100;
+                width: 1000px;
+                height: 580px;
+                background: #004433;
             }
         </style>
     </head>
     <body>
         <div id="chalkboard"></div>
-        <script src="http://code.jquery.com/jquery-1.9.0.js"></script>
-        <script src="http://underscorejs.org/underscore-min.js"></script>
-        <script src="http://documentcloud.github.com/backbone/backbone-min.js"></script>
-        <script src="http://code.jquery.com/ui/1.10.0/jquery-ui.js"></script>
+        <script src="js/jquery-1.9.0.js"></script>
+        <script src="js/underscore-min.js"></script>
+        <script src="js/backbone-min.js"></script>
+        <script src="js/jquery-ui.js"></script>
         <script>
             $(function() {
                 var Sticky = Backbone.Model.extend({
@@ -58,11 +59,13 @@
                 
                 var StickyView = Backbone.View.extend({
                     tagName: 'div',
+                    mode: 'normal',
                     events: {
-                        'drag': 'drag',
+                        'dragstop': 'dragstop',
+                        'dblclick .text': 'startEditing'
                     },
-                    template: _.template('' +
-                                         '<div class="text"><div class="handle"></div><%- text %></div>'),
+                    template: _.template('<div class="handle"></div>' +
+                                         '<div class="text"><%- text %></div>'),
                     initialize: function() {
                         this.parent = this.options.parent;
                         this.model.bind('change', this.render, this);
@@ -70,7 +73,6 @@
                     render: function() {
                         this.$el.html(this.template(this.model.toJSON()));
                         this.$el.draggable({
-                            distance: 20,
                             stack: '.sticky',
                             containment: this.parent.$el,
                             handle: '.handle'
@@ -78,13 +80,31 @@
                         this.$el.addClass('sticky');
                         this.$el.css({
                             top: this.model.get('y'),
-                            left: this.model.get('x')
+                            left: this.model.get('x'),
+                            position: 'absolute'
                         });
                         return this.$el;
                     },
-                    drag: function(ev) {
+                    dragstop: function(ev) {
                         var pos = this.$el.position();
                         this.model.set({'x': pos.left, 'y': pos.top});
+                    },
+                    startEditing: function(ev) {
+                        this.$('.text').html('<textarea class="edit"></textarea>');
+                        var textarea = this.$('.edit');
+                        textarea.val(this.model.get('text'));
+                        textarea.focus();
+                        var button = $('<input type="button" value="Save">');
+                        this.$('.text').append(button);
+                        button.click(this.saveAndStopEditing.bind(this));
+                        return false;
+                    },
+                    saveAndStopEditing: function(ev) {
+                        this.model.set({'text': this.$('.edit').val()});
+                        this.stopEditing();
+                    },
+                    stopEditing: function(ev) {
+                        this.render();
                     }
                 });
                 
@@ -95,18 +115,39 @@
                     initialize: function() {
                         this.$el.addClass('chalkboard');
                         this.collection.bind('add', this.addOne, this);
+                        this.collection.bind('change', this.updateSticky, this);
                         this.render();
                     },
                     render: function() {
                     },
                     create: function(ev) {
                         var sticky = new Sticky({x: ev.offsetX, y: ev.offsetY});
-                        this.collection.add(sticky);
+                        $.ajax(window.location.href, {
+                            type: 'post',
+                            data: {
+                                'action': 'add',
+                                'x': sticky.get('x'),
+                                'y': sticky.get('y'),
+                                'text': sticky.get('text')
+                            }
+                        });
                     },
                     addOne: function(sticky) {
                         var view = new StickyView({model: sticky, parent: this});
                         this.$el.append(view.$el);
                         view.render();
+                    },
+                    updateSticky: function(sticky) {
+                        $.ajax(window.location.href, {
+                            type: 'post',
+                            data: {
+                                'action': 'update',
+                                'x': sticky.get('x'),
+                                'y': sticky.get('y'),
+                                'text': sticky.get('text'),
+                                'id': sticky.get('id')
+                            }
+                        });
                     }
                 });
                 
@@ -117,8 +158,25 @@
                     'collection': stickies
                 });
                 
-                stickies.add({text: 'Foom', x: 100, y: 200});
-                stickies.add({text: "Something else that needs to happen", x: 150, y: 300});
+                
+                function addStickyReceived(sticky) {
+                    stickies.add(JSON.parse(sticky.data))
+                }
+                function removeStickyReceived(sticky) {
+                    console.log('remove: ' + sticky.data);
+                }
+                function updateStickyReceived(ev) {
+                    var data = JSON.parse(ev.data);
+                    var sticky = stickies.filter(function(x) {
+                        return x.get('id') == data.id;
+                    })[0];
+                    sticky.set(data);
+                }
+                
+                var source = new EventSource(window.location.href + '/events');
+                source.addEventListener('add', addStickyReceived);
+                source.addEventListener('remove', removeStickyReceived);
+                source.addEventListener('update', updateStickyReceived);
             });
         </script>
     </body>
