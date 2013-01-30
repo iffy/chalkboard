@@ -27,10 +27,18 @@
             div.sticky textarea {
                 width: 126px;
             }
+            div.chalkboard-container {
+                width: 1024px;
+                height: 768px;
+                overflow: hidden;
+                -webkit-transition: all 0.2s;
+            }
             div.chalkboard {
-                width: 1000px;
-                height: 580px;
+                width: 1024px;
+                height: 768px;
                 background: #004433;
+                -webkit-transform-origin: 0 0;
+                -webkit-transition: all 0.2s;
             }
         </style>
     </head>
@@ -79,15 +87,18 @@
                         });
                         this.$el.addClass('sticky');
                         this.$el.css({
-                            top: this.model.get('y'),
-                            left: this.model.get('x'),
+                            top: parseInt(this.model.get('y') / this.parent.scale),
+                            left: parseInt(this.model.get('x') / this.parent.scale),
                             position: 'absolute'
                         });
                         return this.$el;
                     },
                     dragstop: function(ev) {
                         var pos = this.$el.position();
-                        this.model.set({'x': pos.left, 'y': pos.top});
+                        this.model.set({
+                            'x': parseInt(pos.left),
+                            'y': parseInt(pos.top)
+                        });
                     },
                     startEditing: function(ev) {
                         this.$('.text').html('<textarea class="edit"></textarea>');
@@ -112,13 +123,51 @@
                     events: {
                         'dblclick': "create",
                     },
+                    width: 1024,
+                    height: 768,
+                    border: 40,
+                    minimumScale: 0.5,
+                    scale: 1.0,
                     initialize: function() {
-                        this.$el.addClass('chalkboard');
+                        this.resizeTimer = null;
+                        this.$el.addClass('chalkboard-container');
+                        this.chalkboard = $('<div>');
+                        this.chalkboard.addClass('chalkboard');
+                        this.$el.append(this.chalkboard);
+                        
                         this.collection.bind('add', this.addOne, this);
                         this.collection.bind('change', this.updateSticky, this);
                         this.render();
+                        $(window).resize(this.resizeHappened.bind(this));
+                        this.resizeMe();
+                    },
+                    resizeHappened: function(ev) {
+                        clearTimeout(this.resizeTimer);
+                        this.resizeTimer = setTimeout(this.resizeMe.bind(this), 100);
+                    },
+                    resizeMe: function() {
+                        var width = $(window).width();
+                        var height = $(window).height();
+                        var xscale = width / (this.width - this.border);
+                        var yscale = height / (this.height - this.border);
+                        var scale = xscale > yscale ? yscale : xscale;
+                        this.scale = scale > this.minimumScale ? scale : this.minimumScale;
+                        
+                        // XXX Disable scaling because draggable doesn't work at scale
+                        this.scale = 1;
+                        
+                        this.chalkboard.css({
+                            'width': this.width,
+                            'height': this.height,
+                            '-webkit-transform': 'scale(' + this.scale + ')'
+                        });
+                        this.$el.css({
+                            'width': parseInt((this.width - this.border) * this.scale),
+                            'height': parseInt((this.height - this.border) * this.scale),
+                        });
                     },
                     render: function() {
+                        
                     },
                     create: function(ev) {
                         var sticky = new Sticky({x: ev.offsetX, y: ev.offsetY});
@@ -134,7 +183,7 @@
                     },
                     addOne: function(sticky) {
                         var view = new StickyView({model: sticky, parent: this});
-                        this.$el.append(view.$el);
+                        this.chalkboard.append(view.$el);
                         view.render();
                     },
                     updateSticky: function(sticky) {
