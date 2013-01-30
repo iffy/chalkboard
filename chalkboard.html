@@ -21,7 +21,7 @@
                 font-family: Times;
                 font-size: 16px;
             }
-            div.sticky .text {
+            div.sticky .note {
                 padding: 0px 12px 12px;
             }
             div.sticky .handle {
@@ -60,7 +60,7 @@
                 var Sticky = Backbone.Model.extend({
                     defaults: function() {
                         return {
-                            'text': 'To do',
+                            'note': 'To do',
                             'x': 0,
                             'y': 0
                         };
@@ -77,10 +77,10 @@
                     mode: 'normal',
                     events: {
                         'dragstop': 'dragstop',
-                        'dblclick .text': 'startEditing'
+                        'dblclick .note': 'startEditing'
                     },
                     template: _.template('<div class="handle"></div>' +
-                                         '<div class="text"><%- text %></div>'),
+                                         '<div class="note"><%- note %></div>'),
                     initialize: function() {
                         this.parent = this.options.parent;
                         this.model.bind('change', this.render, this);
@@ -92,11 +92,19 @@
                             containment: this.parent.$el,
                             handle: '.handle'
                         });
+                        var zindex = _.max(_.map($('.sticky'), function(x) {
+                            var z = $(x).css('z-index');
+                            if (z == 'auto') {
+                                return 0;
+                            }
+                            return parseInt(z);
+                        }));
                         this.$el.addClass('sticky');
                         this.$el.css({
                             top: parseInt(this.model.get('y') / this.parent.scale),
                             left: parseInt(this.model.get('x') / this.parent.scale),
-                            position: 'absolute'
+                            position: 'absolute',
+                           'z-index': zindex + 1
                         });
                         return this.$el;
                     },
@@ -108,17 +116,17 @@
                         });
                     },
                     startEditing: function(ev) {
-                        this.$('.text').html('<textarea class="edit"></textarea>');
+                        this.$('.note').html('<textarea class="edit"></textarea>');
                         var textarea = this.$('.edit');
-                        textarea.val(this.model.get('text'));
+                        textarea.val(this.model.get('note'));
                         textarea.focus();
                         var button = $('<input type="button" value="Save">');
-                        this.$('.text').append(button);
+                        this.$('.note').append(button);
                         button.click(this.saveAndStopEditing.bind(this));
                         return false;
                     },
                     saveAndStopEditing: function(ev) {
-                        this.model.set({'text': this.$('.edit').val()});
+                        this.model.set({'note': this.$('.edit').val()});
                         this.stopEditing();
                     },
                     stopEditing: function(ev) {
@@ -184,7 +192,7 @@
                                 'action': 'add',
                                 'x': sticky.get('x'),
                                 'y': sticky.get('y'),
-                                'text': sticky.get('text')
+                                'note': sticky.get('note')
                             }
                         });
                     },
@@ -200,7 +208,7 @@
                                 'action': 'update',
                                 'x': sticky.get('x'),
                                 'y': sticky.get('y'),
-                                'text': sticky.get('text'),
+                                'note': sticky.get('note'),
                                 'id': sticky.get('id')
                             }
                         });
