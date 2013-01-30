@@ -55,7 +55,6 @@ class DatabaseBoardStore(object):
         if not self.pool:
             return
         for d,name,args in self.pending:
-            print 'd', name, args
             method = getattr(self.pool, name)
             method(*args).addBoth(lambda x:d.callback(x))
         while self.pending:
