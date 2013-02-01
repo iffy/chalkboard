@@ -3,8 +3,9 @@ from zope.interface import implements
 from twisted.cred.portal import IRealm, Portal
 from twisted.cred.checkers import FilePasswordDB
 from twisted.web.static import File
+from twisted.web.util import Redirect
 from twisted.web.guard import HTTPAuthSessionWrapper, DigestCredentialFactory
-from twisted.web.resource import Resource, IResource, NoResource
+from twisted.web.resource import Resource, IResource, NoResource, ForbiddenResource as Forbidden
 from twisted.web.server import NOT_DONE_YET
 from twisted.internet import defer
 from twisted.enterprise.adbapi import ConnectionPool
@@ -262,7 +263,27 @@ class ChalkboardIndex(Resource):
         self.store = store
 
 
+    def render_GET(self, request):
+        if len(self.allowed) == 1:
+            request.redirect(request.childLink(self.allowed[0]))
+            return ''
+        links = ['<li><a href="%s">%s</a></li>' % (request.childLink(x),x) for x in self.allowed]
+        return '''<html>
+            <body>
+                <ul>
+                    %s
+                </ul>
+            </body>
+        </html>''' % (''.join(links),)
+
+
     def getChild(self, name, request):
+        if name not in self.allowed:
+            return Forbidden()
+        return Chalkboard(name, self.store)
+
+
+    def getChildWithDefault(self, name, request):
         if name not in self.allowed:
             return Forbidden()
         return Chalkboard(name, self.store)
@@ -285,14 +306,6 @@ class ChalkboardRealm(object):
                     lambda: None)
         raise NotImplementedError()
 
-
-realm = ChalkboardRealm({
-    'john': ['john', 'things'],
-    'sam': ['things'],
-})
-portal = Portal(ChalkboardRealm(), [FilePasswordDB('httpd.password')])
-credentialFactory = DigestCredentialFactory("md5", "localhost:9099")
-resource = HTTPAuthSessionWrapper(portal, [credentialFactory])
 
 
 class Chalkboard(Resource):
@@ -391,8 +404,17 @@ if __name__ == '__main__':
     getReadySqlite('/tmp/d.sqlite').addCallback(_store.attachPool)
     store = EventStoreWrapper(_store)
 
+    realm = ChalkboardRealm(store, {
+        'john': ['john', 'things'],
+        'sam': ['things'],
+    })
+    portal = Portal(realm, [FilePasswordDB('httpd.password')])
+    credentialFactory = DigestCredentialFactory("md5", "localhost:9099")
+    resource = HTTPAuthSessionWrapper(portal, [credentialFactory])
+
     root = Resource()
-    root.putChild('', Chalkboard(1, store))
+    root.putChild('', Redirect('/boards'))
+    root.putChild('boards', resource)
     root.putChild('js', File('js'))
     site = Site(root)
     reactor.listenTCP(9099, site)
