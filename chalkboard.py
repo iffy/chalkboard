@@ -45,6 +45,21 @@ def getReadySqlite(connstr):
     return pool.runInteraction(interaction).addCallbacks((lambda x:pool), log.err)
 
 
+def getReadyPostgres(connstr):
+    pool = ConnectionPool('psycopg2', connstr)
+    def interaction(c):
+        try:
+            c.execute('''create table sticky (
+                    id serial primary key,
+                    board_id text,
+                    updated timestamp default current_timestamp,
+                    note text,
+                    x integer,
+                    y integer)''')
+        except Exception as e:
+            log.err(e)
+    return pool.runInteraction(interaction).addCallbacks((lambda x:pool), log.err)
+
 
 class DatabaseBoardStore(object):
 
