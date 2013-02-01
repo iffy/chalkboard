@@ -23,7 +23,7 @@ def getReadySqlite(connstr):
         try:
             c.execute('''create table sticky (
                     id integer primary key,
-                    board_id integer,
+                    board_id text,
                     updated timestamp default current_timestamp,
                     note text,
                     x integer,
@@ -237,13 +237,6 @@ class InMemoryBoardStore(object):
 
 
 
-#store = EventStoreWrapper(InMemoryBoardStore())
-_store = DatabaseBoardStore('?')
-getReadySqlite('/tmp/d.sqlite').addCallback(_store.attachPool)
-store = EventStoreWrapper(_store)
-
-
-
 def jsonfinish(data, request):
     request.setHeader('Content-type', 'application/json')
     request.write(json.dumps(data).encode('utf-8'))
@@ -253,10 +246,11 @@ def jsonfinish(data, request):
 class Chalkboard(Resource):
 
 
-    def __init__(self, board_id):
+    def __init__(self, board_id, store):
         Resource.__init__(self)
         self.board_id = board_id
-        self.feed = StickyFeed(board_id)
+        self.store = store
+        self.feed = StickyFeed(board_id, store)
         self.putChild('events', self.feed)
 
 
@@ -278,7 +272,7 @@ class Chalkboard(Resource):
         note = request.args.get('note')[0]
         x = int(request.args.get('x')[0])
         y = int(request.args.get('y')[0])
-        store.addSticky(self.board_id, note, x, y).addCallback(jsonfinish, request)
+        self.store.addSticky(self.board_id, note, x, y).addCallback(jsonfinish, request)
         return NOT_DONE_YET
 
 
@@ -287,13 +281,13 @@ class Chalkboard(Resource):
         note = request.args.get('note')[0]
         x = int(request.args.get('x')[0])
         y = int(request.args.get('y')[0])
-        store.updateSticky(self.board_id, sticky_id, note, x, y)
+        self.store.updateSticky(self.board_id, sticky_id, note, x, y)
         return ''
 
 
     def do_remove(self, request):
         sticky_id = int(request.args.get('id')[0])
-        store.removeSticky(self.board_id, sticky_id)
+        self.store.removeSticky(self.board_id, sticky_id)
         return ''
 
 
@@ -301,22 +295,23 @@ class Chalkboard(Resource):
 class StickyFeed(Resource):
 
     
-    def __init__(self, board_id):
+    def __init__(self, board_id, store):
         Resource.__init__(self)
         self.board_id = board_id
+        self.store = store
 
 
     def render_GET(self, request):
         request.setHeader('Content-type', 'text/event-stream')
         request.write(sseMsg('hello', 'keep alive'))
-        store.getStickies(self.board_id).addCallback(self.gotStickies, request)
+        self.store.getStickies(self.board_id).addCallback(self.gotStickies, request)
         return NOT_DONE_YET
 
 
     def gotStickies(self, stickies, request):
         for sticky in stickies:
             self.eventReceived(request, 'add', sticky)
-        store.subscribe(self.board_id, partial(self.eventReceived, request))
+        self.store.subscribe(self.board_id, partial(self.eventReceived, request))
 
 
     def eventReceived(self, request, event, data):
@@ -340,8 +335,13 @@ if __name__ == '__main__':
     log.startLogging(sys.stdout)
     log.startLogging(fh)
 
+    #store = EventStoreWrapper(InMemoryBoardStore())
+    _store = DatabaseBoardStore('?')
+    getReadySqlite('/tmp/d.sqlite').addCallback(_store.attachPool)
+    store = EventStoreWrapper(_store)
+
     root = Resource()
-    root.putChild('', Chalkboard(1))
+    root.putChild('', Chalkboard(1, store))
     root.putChild('js', File('js'))
     site = Site(root)
     reactor.listenTCP(9099, site)
