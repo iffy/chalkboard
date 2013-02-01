@@ -46,6 +46,12 @@
                 -webkit-transform-origin: 0 0;
                 -webkit-transition: all 0.2s;
             }
+            .notice {
+                color: #fff;
+                background: #000;
+                font-size: 24px;
+                padding: 12px;
+            }
         </style>
     </head>
     <body>
@@ -129,6 +135,7 @@
                                 'id': sticky.get('id')
                             }
                         });
+                        extendKillTimer();
                     },
                     startEditing: function(ev) {
                         this.$('.note').html('<textarea class="edit"></textarea>');
@@ -142,6 +149,8 @@
                         var delbutton = $('<input type="button" value="Trash">');
                         this.$('.note').append(delbutton);
                         delbutton.click(this.deleteMe.bind(this));
+                        
+                        extendKillTimer();
                         return false;
                     },
                     saveAndStopEditing: function(ev) {
@@ -151,6 +160,7 @@
                     },
                     stopEditing: function(ev) {
                         this.render();
+                        extendKillTimer();
                     },
                     deleteMe: function(ev) {
                         $.ajax(window.location.href, {
@@ -160,6 +170,7 @@
                                 'id': this.model.get('id')
                             }
                         });
+                        extendKillTimer();
                     }
                 });
                 
@@ -172,6 +183,7 @@
                     border: 40,
                     minimumScale: 0.5,
                     scale: 1.0,
+                    disabled: false,
                     initialize: function() {
                         this.views = [];
                         this.resizeTimer = null;
@@ -185,6 +197,12 @@
                         this.render();
                         $(window).resize(this.resizeHappened.bind(this));
                         this.resizeMe();
+                    },
+                    disable: function(ev) {
+                        this.$el.html('<div class="notice">Nothing has happened for a while, so ' +
+                                      'we have shut things down.  Please ' +
+                                      'reload the page.</div>');
+                        this.disabled = true;
                     },
                     resizeHappened: function(ev) {
                         clearTimeout(this.resizeTimer);
@@ -215,6 +233,9 @@
                         
                     },
                     create: function(ev) {
+                        if (this.disabled) {
+                            return;
+                        }
                         var sticky = new Sticky({x: ev.offsetX, y: ev.offsetY});
                         $.ajax(window.location.href, {
                             type: 'post',
@@ -225,6 +246,7 @@
                                 'note': sticky.get('note')
                             }
                         });
+                        extendKillTimer();
                     },
                     addOne: function(sticky) {
                         var view = new StickyView({model: sticky, parent: this});
@@ -244,7 +266,7 @@
                 
                 stickies = new StickyCollection;
                 
-                new ChalkboardView({
+                var chalkboard_view = new ChalkboardView({
                     'el': '#chalkboard',
                     'collection': stickies
                 });
@@ -252,6 +274,7 @@
                 
                 function addStickyReceived(sticky) {
                     stickies.add(JSON.parse(sticky.data))
+                    extendKillTimer();
                 }
                 function removeStickyReceived(ev) {
                     var data = JSON.parse(ev.data);
@@ -259,6 +282,7 @@
                         return x.get('id') == data;
                     })[0];
                     stickies.remove(sticky);
+                    extendKillTimer();
                 }
                 function updateStickyReceived(ev) {
                     var data = JSON.parse(ev.data);
@@ -266,12 +290,28 @@
                         return x.get('id') == data.id;
                     })[0];
                     sticky.set(data);
+                    extendKillTimer();
                 }
                 
-                var source = new EventSource(window.location.href + '/events');
-                source.addEventListener('add', addStickyReceived);
-                source.addEventListener('remove', removeStickyReceived);
-                source.addEventListener('update', updateStickyReceived);
+                var source;
+                var kill_timer;
+                var lifetime = 30 * 60 * 1000;
+                function closeConnection() {
+                    source.close();
+                    chalkboard_view.disable();
+                }
+                function openConnection() {
+                    source = new EventSource(window.location.href + '/events');
+                    source.addEventListener('add', addStickyReceived);
+                    source.addEventListener('remove', removeStickyReceived);
+                    source.addEventListener('update', updateStickyReceived);
+                    extendKillTimer();
+                }
+                function extendKillTimer() {
+                    clearTimeout(kill_timer);
+                    kill_timer = setTimeout(closeConnection, lifetime);
+                }
+                openConnection();
             });
         </script>
     </body>
