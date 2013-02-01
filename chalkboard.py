@@ -1,12 +1,23 @@
-from twisted.web.resource import Resource
+from zope.interface import implements
+
+from twisted.cred.portal import IRealm, Portal
+from twisted.cred.checkers import FilePasswordDB
+from twisted.web.static import File
+from twisted.web.guard import HTTPAuthSessionWrapper, DigestCredentialFactory
+from twisted.web.resource import Resource, IResource, NoResource
 from twisted.web.server import NOT_DONE_YET
 from twisted.internet import defer
 from twisted.enterprise.adbapi import ConnectionPool
 from twisted.python import log
+
 from collections import defaultdict
 from functools import partial
+
 from jinja2 import Environment, FileSystemLoader
+
 import json
+
+
 
 jenv = Environment(loader=FileSystemLoader('.'))
 
@@ -243,6 +254,47 @@ def jsonfinish(data, request):
     request.finish()
 
 
+class ChalkboardIndex(Resource):
+
+    def __init__(self, store, allowed):
+        Resource.__init__(self)
+        self.allowed = allowed
+        self.store = store
+
+
+    def getChild(self, name, request):
+        if name not in self.allowed:
+            return Forbidden()
+        return Chalkboard(name, self.store)
+
+
+class ChalkboardRealm(object):
+    implements(IRealm)
+    
+    def __init__(self, store, permissions):
+        """
+        @param permissions: A dictionary of permissions
+        """
+        self.store = store
+        self.permissions = permissions
+
+    def requestAvatar(self, avatarId, mind, *interfaces):
+        if IResource in interfaces:
+            return (IResource,
+                    ChalkboardIndex(self.store, self.permissions.get(avatarId)),
+                    lambda: None)
+        raise NotImplementedError()
+
+
+realm = ChalkboardRealm({
+    'john': ['john', 'things'],
+    'sam': ['things'],
+})
+portal = Portal(ChalkboardRealm(), [FilePasswordDB('httpd.password')])
+credentialFactory = DigestCredentialFactory("md5", "localhost:9099")
+resource = HTTPAuthSessionWrapper(portal, [credentialFactory])
+
+
 class Chalkboard(Resource):
 
 
@@ -328,7 +380,6 @@ def sseMsg(name, data):
 
 if __name__ == '__main__':
     from twisted.internet import reactor
-    from twisted.web.static import File
     from twisted.web.server import Site
     fh = open('twistd.log', 'wb')
     import sys
