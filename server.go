@@ -53,7 +53,7 @@ func (m *MemStore) UpdateSticky(a Sticky) {
 type ResponseWriter struct {
 	done   chan bool
 	writer http.ResponseWriter
-	req http.Request
+	req    http.Request
 }
 
 type Sticky struct {
@@ -71,13 +71,13 @@ type Ev struct {
 	subscribed chan ResponseWriter
 	events     chan string
 	clients    map[string]ResponseWriter
-	Store
+	Store	   //interface
 }
 
 var files = []string{"/js/backbone-min.js", "/js/jquery-1.9.0.js",
 	"/js/jquery-ui.js", "/js/underscore-min.js"}
 
-func mkev(evt, data string) (res string) {
+func mkevent(evt, data string) (res string) {
 	res = fmt.Sprintf("event: %s\ndata: %s\n\n", evt, data)
 	return
 }
@@ -97,19 +97,26 @@ func (e *Ev) work() {
 			log.Printf("adding client %s", rw.req.RemoteAddr)
 			e.Itersticky(func(st Sticky) {
 				a, _ := json.Marshal(st)
-				ev := mkev("add", string(a))
+				ev := mkevent("add", string(a))
 				fmt.Fprintf(rw.writer, ev)
 				flush(rw.writer)
 			})
 		case ev := <-e.events:
 			log.Printf("Broadcast to %d clients", len(e.clients))
+			var delthese []string = nil
 			for k, w := range e.clients {
 				_, err := fmt.Fprintf(w.writer, ev)
 				if err != nil {
+					delthese = append(delthese, k)
+					w.done <- true
 					log.Printf("removing client for %s", err)
-					delete(e.clients, k)
+				} else {
+					flush(w.writer)
 				}
-				flush(w.writer)
+			}
+			for _, v := range(delthese) {
+				delete(e.clients, v)
+				
 			}
 		}
 	}
@@ -135,20 +142,8 @@ func flush(w http.ResponseWriter) {
 	}
 }
 
-func main() {
-	useAllCores()
-	cwd, err := filepath.Abs(".")
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, file := range files {
-
-		http.HandleFunc(file, f(cwd+file))
-	}
-	store := &MemStore{make(map[int]Sticky), 1}
-	e := NewEv(store)
-	go e.work()
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+func chalkboard(e Ev) func(http.ResponseWriter, *http.Request) {
+return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "POST":
 			err := r.ParseForm()
@@ -172,7 +167,7 @@ func main() {
 				w.Header().Set("Content-type", "application/json")
 				fmt.Fprintf(w, string(a))
 				flush(w)
-				e.events <- mkev("add", string(a))
+				e.events <- mkevent("add", string(a))
 			case "update":
 				id, _ := strconv.Atoi(formdat["id"][0])
 				note := formdat["note"][0]
@@ -181,24 +176,43 @@ func main() {
 				st := Sticky{id, note, x, y}
 				e.UpdateSticky(st)
 				a, _ := json.Marshal(st)
-				e.events <- mkev("update", string(a))
+				e.events <- mkevent("update", string(a))
 			case "remove":
 				id, _ := strconv.Atoi(formdat["id"][0])
 				e.RmSticky(id)
 				r := fmt.Sprintf(`"%d"`, id)
-				e.events <- mkev("remove", r)
+				e.events <- mkevent("remove", r)
 			}
 		case "GET":
 			http.ServeFile(w, r, "chalkboard.html")
 		}
 
-	})
-	http.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
+	}
+}
+
+func events(e Ev) func(http.ResponseWriter, *http.Request) {
+return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-type", "text/event-stream")
-		fmt.Fprintf(w, mkev("hello", `"keep alive"`))
+		fmt.Fprintf(w, mkevent("hello", `"keep alive"`))
 		flush(w)
 		done := e.subscribe(w, *r)
 		<-done
-	})
+	}
+}
+func main() {
+	useAllCores()
+	cwd, err := filepath.Abs(".")
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, file := range files {
+
+		http.HandleFunc(file, f(cwd+file))
+	}
+	store := &MemStore{make(map[int]Sticky), 1}
+	e := NewEv(store)
+	go e.work()
+	http.HandleFunc("/", chalkboard(e))
+	http.HandleFunc("/events", events(e))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
