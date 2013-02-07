@@ -1,5 +1,5 @@
 <!doctype html>
-<html ng-app="chalkboard">
+<html>
     <head>
         <title>Chalkboard</title>
         <style>
@@ -274,7 +274,6 @@
                 
                 function addStickyReceived(sticky) {
                     stickies.add(JSON.parse(sticky.data))
-                    extendKillTimer();
                 }
                 function removeStickyReceived(ev) {
                     var data = JSON.parse(ev.data);
@@ -282,7 +281,6 @@
                         return x.get('id') == data;
                     })[0];
                     stickies.remove(sticky);
-                    extendKillTimer();
                 }
                 function updateStickyReceived(ev) {
                     var data = JSON.parse(ev.data);
@@ -290,7 +288,6 @@
                         return x.get('id') == data.id;
                     })[0];
                     sticky.set(data);
-                    extendKillTimer();
                 }
                 
                 var source;
