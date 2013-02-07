@@ -57,6 +57,10 @@
             .chalkboard-container canvas {
                 background: #004433 url('/js/dark_wall.png');
             }
+            .unselectable {
+                -moz-user-select: none;
+                -webkit-user-select: none;
+            }
         </style>
     </head>
     <body>
@@ -176,6 +180,12 @@
                             }
                         });
                         extendKillTimer();
+                    },
+                    disableSelection: function() {
+                        this.$el.addClass('unselectable');
+                    },
+                    enableSelection: function() {
+                        this.$el.removeClass('unselectable');
                     }
                 });
                 
@@ -279,12 +289,20 @@
                         this.views.splice(i, 1);
                     },
                     startTool: function(ev) {
-                        this.mouse_down = true;
+                        if (ev.target === this.chalkboard[0]) {
+                            this.mouse_down = true;
+                            _.each(this.views, function(x) {
+                                x.disableSelection();
+                            });
+                        }
                     },
                     stopTool: function(ev) {
                         if (this.mouse_down) {
                             this.mouse_down = false;
                             this.saveDrawing();
+                            _.each(this.views, function(x) {
+                                x.enableSelection();
+                            });
                         }
                     },
                     mousemoveHandler: function(ev) {
