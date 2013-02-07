@@ -39,10 +39,12 @@
                 overflow: hidden;
                 -webkit-transition: all 0.2s;
             }
-            div.chalkboard {
+            .chalkboard-container div.chalkboard {
                 width: 1024px;
                 height: 768px;
-                background: #004433;
+                position: absolute;
+                top: 0;
+                left: 0;
                 -webkit-transform-origin: 0 0;
                 -webkit-transition: all 0.2s;
             }
@@ -51,6 +53,9 @@
                 background: #000;
                 font-size: 24px;
                 padding: 12px;
+            }
+            .chalkboard-container canvas {
+                background: #004433 url('/js/dark_wall.png');
             }
         </style>
     </head>
@@ -177,6 +182,10 @@
                 var ChalkboardView = Backbone.View.extend({
                     events: {
                         'dblclick': "create",
+                        'mousedown .chalkboard': "startTool",
+                        'mouseup .chalkboard': 'stopTool',
+                        'mouseleave .chalkboard': 'stopTool',
+                        'mousemove .chalkboard': 'mousemoveHandler'
                     },
                     width: 1024,
                     height: 500,
@@ -184,14 +193,21 @@
                     minimumScale: 0.5,
                     scale: 1.0,
                     disabled: false,
+                    tool: 'chalk',
                     initialize: function() {
                         this.views = [];
                         this.resizeTimer = null;
                         this.$el.addClass('chalkboard-container');
+                        this.canvas = $('<canvas>');
+                        this.canvas.attr('width', this.width)
+                                   .attr('height', this.height);
+                        this.$el.append(this.canvas);
+                        this.ctx = this.canvas[0].getContext('2d');
+                        this.ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+                        
                         this.chalkboard = $('<div>');
                         this.chalkboard.addClass('chalkboard');
                         this.$el.append(this.chalkboard);
-                        
                         this.collection.bind('add', this.addOne, this);
                         this.collection.bind('remove', this.removeOne, this);
                         this.render();
@@ -261,12 +277,63 @@
                         view.$el.remove();
                         var i = this.views.indexOf(view);
                         this.views.splice(i, 1);
+                    },
+                    startTool: function(ev) {
+                        this.mouse_down = true;
+                    },
+                    stopTool: function(ev) {
+                        if (this.mouse_down) {
+                            this.mouse_down = false;
+                            this.saveDrawing();
+                        }
+                    },
+                    mousemoveHandler: function(ev) {
+                        if (this.mouse_down) {
+                            if (this.tool == 'chalk') {
+                                this.drawSomeChalk(ev.offsetX, ev.offsetY);
+                            }
+                        }
+                    },
+                    drawSomeChalk: function(x, y) {
+                        var radius = 20;
+                        for (var i = 0; i < 50; i++) {
+                            var d = 2 * Math.PI * Math.random();
+                            var r = Math.sqrt(Math.random() * radius);
+                            var dx = r * Math.cos(d);
+                            var dy = r * Math.sin(d);
+                            var opacity = r / radius;
+                            this.drawpoint(Math.floor(x + dx), Math.floor(y + dy),
+                                           'rgba(255,255,255,'+opacity+')');
+                        }
+                    },
+                    drawpoint: function(x, y, rgba) {                        
+                        this.ctx.fillStyle = rgba;
+                        this.ctx.fillRect(x, y, 1, 1);
+                    },
+                    saveDrawing: function() {
+                        $.ajax(window.location.href, {
+                            type: 'post',
+                            data: {
+                                'action': 'saveimage',
+                                'image': this.canvas[0].toDataURL()
+                            }
+                        });
+                    },
+                    loadImage: function(src) {
+                        if (src) {
+                            var img = new Image();
+                            img.onload = function() {
+                                this.ctx.clearRect(0, 0, this.width, this.height);
+                                this.ctx.drawImage(img, 0, 0);
+                            }.bind(this);
+                            img.src = src;
+                        }
                     }
                 });
                 
                 stickies = new StickyCollection;
                 
-                var chalkboard_view = new ChalkboardView({
+                var chalkboard = new ChalkboardView({
                     'el': '#chalkboard',
                     'collection': stickies
                 });
@@ -289,6 +356,9 @@
                     })[0];
                     sticky.set(data);
                 }
+                function imageReceived(ev) {
+                    chalkboard.loadImage(JSON.parse(ev.data));
+                }
                 
                 var source;
                 var kill_timer;
@@ -302,6 +372,7 @@
                     source.addEventListener('add', addStickyReceived);
                     source.addEventListener('remove', removeStickyReceived);
                     source.addEventListener('update', updateStickyReceived);
+                    source.addEventListener('image', imageReceived);
                     extendKillTimer();
                 }
                 function extendKillTimer() {

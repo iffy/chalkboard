@@ -42,6 +42,16 @@ def getReadySqlite(connstr):
                     y integer)''')
         except Exception as e:
             log.err(e)
+        try:
+            c.execute('''create table image (
+                id integer primary key,
+                board_id text,
+                updated timestamp default current_timestamp,
+                data blob
+            )''')
+            c.execute('''create unique index image_board_id on image(board_id)''')
+        except Exception as e:
+            log.err(e)
     return pool.runInteraction(interaction).addCallbacks((lambda x:pool), log.err)
 
 
@@ -162,6 +172,23 @@ class DatabaseBoardStore(object):
         return d.addCallback(lambda x:sticky_id)
 
 
+    def saveImage(self, board_id, image):
+        select = self.formatRawQuery('''select count(*) from image
+                                        where board_id=%(param)s''')
+        update = self.formatRawQuery('''update image set data=%(param)s
+                                        where board_id=%(param)s''')
+        insert = self.formatRawQuery('''insert into image (board_id, data)
+                                        values (%(param)s, %(param)s)''')
+        def interaction(c):
+            c.execute(select, (board_id,))
+            r = c.fetchone()
+            if r[0]:
+                c.execute(update, (image, board_id))
+            else:
+                c.execute(insert, (board_id, image))
+        return self.runInteraction(interaction)
+
+
 
 class EventStoreWrapper(object):
     """
@@ -190,6 +217,15 @@ class EventStoreWrapper(object):
     def removeSticky(self, board_id, *args):
         return defer.maybeDeferred(self.store.removeSticky,
                                    board_id, *args).addCallback(self.emitOne, board_id, 'remove')
+
+
+    def saveImage(self, board_id, *args):
+        return defer.maybeDeferred(self.store.saveImage,
+                                   board_id, *args).addCallback(self.emitOne, board_id, 'image')
+
+
+    def getImage(self, board_id, *args):
+        return defer.maybeDeferred(self.store.getImage, board_id, *args)
 
 
     def emit(self, board_id, action, data):
@@ -221,6 +257,7 @@ class InMemoryBoardStore(object):
 
     def __init__(self):
         self.boards = defaultdict(lambda:[])
+        self.images = defaultdict(lambda: '')
         self.subscriptions = defaultdict(lambda:[])
 
 
@@ -261,6 +298,16 @@ class InMemoryBoardStore(object):
         self.boards[board_id].remove(sticky)
         self.boards[board_id].append(sticky)
         return sticky
+
+
+    def saveImage(self, board_id, image):
+        self.images[board_id] = image
+        return image
+
+
+    def getImage(self, board_id):
+        return self.images.get(board_id, None)
+
 
 
 
@@ -346,6 +393,10 @@ class Chalkboard(Resource):
             return self.do_update(request)
         elif action == 'remove':
             return self.do_remove(request)
+        elif action == 'saveimage':
+            return self.do_saveimage(request)
+        request.setResponseCode(400)
+        return ''
 
 
     def do_add(self, request):
@@ -371,6 +422,12 @@ class Chalkboard(Resource):
         return ''
 
 
+    def do_saveimage(self, request):
+        image = request.args['image'][0]
+        store.saveImage(self.board_id, image)
+        return ''
+
+
 
 class StickyFeed(Resource):
 
@@ -385,6 +442,7 @@ class StickyFeed(Resource):
         request.setHeader('Content-type', 'text/event-stream')
         request.write(sseMsg('hello', 'keep alive'))
         self.store.getStickies(self.board_id).addCallback(self.gotStickies, request)
+        self.store.getImage(self.board_id).addCallback(self.gotImage, request)
         return NOT_DONE_YET
 
 
@@ -392,6 +450,10 @@ class StickyFeed(Resource):
         for sticky in stickies:
             self.eventReceived(request, 'add', sticky)
         self.store.subscribe(self.board_id, partial(self.eventReceived, request))
+
+
+    def gotImage(self, image, request):
+        self.eventReceived(request, 'image', image)
 
 
     def eventReceived(self, request, event, data):
@@ -414,10 +476,10 @@ if __name__ == '__main__':
     log.startLogging(sys.stdout)
     log.startLogging(fh)
 
-    #store = EventStoreWrapper(InMemoryBoardStore())
-    _store = DatabaseBoardStore('?')
-    getReadySqlite('/tmp/d.sqlite').addCallback(_store.attachPool)
-    store = EventStoreWrapper(_store)
+    store = EventStoreWrapper(InMemoryBoardStore())
+    #_store = DatabaseBoardStore('?')
+    #getReadySqlite('/tmp/d.sqlite').addCallback(_store.attachPool)
+    #store = EventStoreWrapper(_store)
 
     realm = ChalkboardRealm(store, {
         'john': ['john', 'things'],
