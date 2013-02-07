@@ -39,15 +39,18 @@
             div.sticky.beingdragged {
                 opacity: 0.5;
             }
+            div.app-container {
+                
+            }
             div.chalkboard-container {
                 width: 1024px;
-                height: 768px;
+                height: 500px;
                 overflow: hidden;
                 -webkit-transition: all 0.2s;
             }
             .chalkboard-container div.chalkboard {
                 width: 1024px;
-                height: 768px;
+                height: 500px;
                 position: absolute;
                 top: 0;
                 left: 0;
@@ -65,6 +68,9 @@
             .unselectable {
                 -moz-user-select: none;
                 -webkit-user-select: none;
+            }
+            button {
+                font-size: 12px;
             }
         </style>
     </head>
@@ -207,7 +213,9 @@
                         'mousedown .chalkboard': "startTool",
                         'mouseup .chalkboard': 'stopTool',
                         'mouseleave .chalkboard': 'stopTool',
-                        'mousemove .chalkboard': 'mousemoveHandler'
+                        'mousemove .chalkboard': 'mousemoveHandler',
+                        'click button.chalk': 'chooseChalk',
+                        'click button.eraser': 'chooseEraser'
                     },
                     width: 1024,
                     height: 500,
@@ -216,22 +224,40 @@
                     scale: 1.0,
                     disabled: false,
                     tool: 'chalk',
+                    lastX: null,
+                    lastY: null,
+                    control_template: _.template(
+                        '<div class="controls">' +
+                            '<button type="button" class="chalk">chalk</button>' +
+                            '<button type="button" class="eraser">eraser</button>' +
+                        '</div>'),
                     initialize: function() {
                         this.views = [];
                         this.resizeTimer = null;
-                        this.$el.addClass('chalkboard-container');
+                        this.$el.addClass('app-container');
+                        
+                        this.chalk_container = $('<div>');
+                        this.chalk_container.addClass('chalkboard-container');
+                        this.$el.append(this.chalk_container);
+
                         this.canvas = $('<canvas>');
                         this.canvas.attr('width', this.width)
                                    .attr('height', this.height);
-                        this.$el.append(this.canvas);
+                        this.chalk_container.append(this.canvas);
                         this.ctx = this.canvas[0].getContext('2d');
                         this.ctx.fillStyle = 'rgba(255, 255, 255, 1)';
                         
                         this.chalkboard = $('<div>');
                         this.chalkboard.addClass('chalkboard');
-                        this.$el.append(this.chalkboard);
+                        this.chalk_container.append(this.chalkboard);
                         this.collection.bind('add', this.addOne, this);
                         this.collection.bind('remove', this.removeOne, this);
+                        
+                        // controls
+                        this.controls = $('<div>').addClass('controls');
+                        this.controls.html(this.control_template());
+                        this.$el.append(this.controls);
+
                         this.render();
                         $(window).resize(this.resizeHappened.bind(this));
                         this.resizeMe();
@@ -300,6 +326,12 @@
                         var i = this.views.indexOf(view);
                         this.views.splice(i, 1);
                     },
+                    chooseChalk: function() {
+                        this.tool = 'chalk';
+                    },
+                    chooseEraser: function() {
+                        this.tool = 'eraser';
+                    },
                     startTool: function(ev) {
                         if (ev.target === this.chalkboard[0]) {
                             this.mouse_down = true;
@@ -311,6 +343,8 @@
                     stopTool: function(ev) {
                         if (this.mouse_down) {
                             this.mouse_down = false;
+                            this.lastX = null;
+                            this.lastY = null;
                             this.saveDrawing();
                             _.each(this.views, function(x) {
                                 x.enableSelection();
@@ -321,6 +355,8 @@
                         if (this.mouse_down) {
                             if (this.tool == 'chalk') {
                                 this.drawSomeChalk(ev.offsetX, ev.offsetY);
+                            } else if (this.tool == 'eraser') {
+                                this.eraseTo(ev.offsetX, ev.offsetY);
                             }
                         }
                     },
@@ -339,6 +375,69 @@
                     drawpoint: function(x, y, rgba) {                        
                         this.ctx.fillStyle = rgba;
                         this.ctx.fillRect(x, y, 1, 1);
+                    },
+                    eraseTo: function(x, y) {
+                        var eraser_width = 40;
+                        // draw a line right now.
+                        if (this.lastX && this.lastY) {
+                            var pixels = this.ctx.getImageData(0, 0, this.width, this.height);
+                            this.eraseLine(pixels, this.lastX, this.lastY, x, y);
+                        }
+                        this.lastX = x;
+                        this.lastY = y;
+                    },
+                    eraseLine: function(pixels, fx, fy, tx, ty, factor) {
+                        console.log(pixels);
+                        console.log('' + fx + ',' + fy + ' -> ' + tx +','+ty);
+                        var dx = tx - fx;
+                        var dy = ty - fy;
+                        var distance = Math.sqrt(dx*dx + dy*dy);
+                        if (!distance) {
+                            return;
+                        }
+                        var matrix = [
+                             0.3, 0, 0,
+                             0.3, 0, 0,
+                             0.3, 0, 0
+                        ];
+                        console.log(distance);
+                        for (var i = 0; i < distance; i++) {
+                            var px = fx + i * dx / distance;
+                            var py = fy + i * dy / distance;
+                            this.convolvePixel(pixels, matrix, px, py);
+                        }
+                    },
+                    convolvePixel: function(pixels, matrix, x, y) {
+                        var side = Math.round(Math.sqrt(matrix.length));
+                        var halfSide = Math.floor(side/2);
+                        
+                        var src = pixels.data;
+                        var width = pixels.width;
+                        var height = pixels.height;
+                        
+                        var output = this.ctx.createImageData(1, 1);
+                        var dstOff = (y * width + x) * 4;
+                        
+                        var r=0, g=0, b=0, a=0;
+                        for (var cy=0; cy < side; cy++) {
+                            for (var cx=0; cx < side; cx++) {
+                                var src_y = y + cy - halfSide;
+                                var src_x = x + cx - halfSide;
+                                if (src_y >= 0 && src_y < height && src_x >= 0 && src_x < width) {
+                                    var srcOff = (src_y * width + src_x)*4;
+                                    var wt = matrix[cy * side + cx];
+                                    r += src[srcOff] * wt;
+                                    g += src[srcOff+1] * wt;
+                                    b += src[srcOff+2] * wt;
+                                    a += src[srcOff+3] * wt;
+                                }
+                            }
+                        }
+                        output.data[0] = r;
+                        output.data[1] = g;
+                        output.data[2] = b;
+                        output.data[3] = a;
+                        this.ctx.putImageData(output, x, y);
                     },
                     saveDrawing: function() {
                         $.ajax(window.location.href, {
