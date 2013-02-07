@@ -202,6 +202,18 @@ class DatabaseBoardStore(object):
         return self.runInteraction(interaction)
 
 
+    def getImage(self, board_id):
+        select = self.formatRawQuery('''select data from image
+                                        where board_id=%(param)s''')
+        def interaction(c):
+            c.execute(select, (board_id,))
+            r = c.fetchone()
+            if not r:
+                return None
+            return r[0]
+        return self.runInteraction(interaction)
+
+
 
 class EventStoreWrapper(object):
     """
@@ -489,22 +501,23 @@ if __name__ == '__main__':
     log.startLogging(sys.stdout)
     log.startLogging(fh)
 
-    store = EventStoreWrapper(InMemoryBoardStore())
-    #_store = DatabaseBoardStore('?')
-    #getReadySqlite('/tmp/d.sqlite').addCallback(_store.attachPool)
-    #store = EventStoreWrapper(_store)
+    #store = EventStoreWrapper(InMemoryBoardStore())
+    _store = DatabaseBoardStore('?')
+    getReadySqlite('/tmp/d.sqlite').addCallback(_store.attachPool)
+    store = EventStoreWrapper(_store)
 
-    realm = ChalkboardRealm(store, {
-        'john': ['john', 'things'],
-        'sam': ['things'],
-    })
-    portal = Portal(realm, [FilePasswordDB('httpd.password')])
-    credentialFactory = DigestCredentialFactory("md5", "localhost:9099")
-    resource = HTTPAuthSessionWrapper(portal, [credentialFactory])
+    #realm = ChalkboardRealm(store, {
+    #    'john': ['john', 'things'],
+    #    'sam': ['things'],
+    #})
+    #portal = Portal(realm, [FilePasswordDB('httpd.password')])
+    #credentialFactory = DigestCredentialFactory("md5", "localhost:9099")
+    #resource = HTTPAuthSessionWrapper(portal, [credentialFactory])
 
     root = Resource()
     root.putChild('', Redirect('/boards'))
-    root.putChild('boards', resource)
+    #root.putChild('boards', resource)
+    root.putChild('boards', Chalkboard('foo', store))
     root.putChild('js', File('js'))
     site = Site(root)
     reactor.listenTCP(9099, site)
