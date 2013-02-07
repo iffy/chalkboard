@@ -57,7 +57,7 @@ def getReadySqlite(connstr):
 
 def getReadyPostgres(connstr):
     pool = ConnectionPool('psycopg2', connstr)
-    def interaction(c):
+    def i1(c):
         try:
             c.execute('''create table sticky (
                     id serial primary key,
@@ -68,7 +68,20 @@ def getReadyPostgres(connstr):
                     y integer)''')
         except Exception as e:
             log.err(e)
-    return pool.runInteraction(interaction).addCallbacks((lambda x:pool), log.err)
+    def i2(c):
+        try:
+            c.execute('''create table image (
+                id serial primary key,
+                board_id text,
+                updated timestamp default current_timestamp,
+                data bytea
+            )''')
+            c.execute('''create unique index image_board_id on image(board_id)''')
+        except Exception as e:
+            log.err(e)
+    d = pool.runInteraction(i1)
+    d.addCallback(lambda x: pool.runInteraction(i2))
+    return d.addCallbacks((lambda x:pool), log.err)
 
 
 class DatabaseBoardStore(object):
