@@ -199,6 +199,7 @@ class DatabaseBoardStore(object):
                 c.execute(update, (image, board_id))
             else:
                 c.execute(insert, (board_id, image))
+            return image
         return self.runInteraction(interaction)
 
 
