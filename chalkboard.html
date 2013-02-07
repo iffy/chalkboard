@@ -11,11 +11,9 @@
                 background: #000;
             }
             div.sticky {
-                background: #ffeeaa;
                 display: block;
                 position: absolute;
                 width: 150px;
-                box-shadow: #000 0px 0px 6px;
             }
             div.sticky * {
                 font-family: Times;
@@ -33,6 +31,14 @@
                 border: 0px;
                 background: transparent;
             }
+            div.sticky .inner {
+                background: #ffeeaa;
+                box-shadow: #000 0px 0px 6px;
+                -webkit-transition: opacity 0.5s;
+            }
+            div.sticky.beingdragged {
+                opacity: 0.5;
+            }
             div.chalkboard-container {
                 width: 1024px;
                 height: 768px;
@@ -45,7 +51,6 @@
                 position: absolute;
                 top: 0;
                 left: 0;
-                -webkit-transform-origin: 0 0;
                 -webkit-transition: all 0.2s;
             }
             .notice {
@@ -90,11 +95,14 @@
                     tagName: 'div',
                     mode: 'normal',
                     events: {
+                        'dragstart': 'dragstart',
                         'dragstop': 'dragstop',
                         'dblclick .note': 'startEditing'
                     },
-                    template: _.template('<div class="handle"></div>' +
-                                         '<div class="note"><%- note %></div>'),
+                    template: _.template('<div class="inner">' +
+                                            '<div class="handle"></div>' +
+                                            '<div class="note"><%- note %></div>' +
+                                         '</div>'),
                     initialize: function() {
                         this.parent = this.options.parent;
                         this.model.bind('change', this.render, this);
@@ -124,7 +132,11 @@
                         }, 'slow');
                         return this.$el;
                     },
+                    dragstart: function(ev) {
+                        this.$el.addClass('beingdragged');
+                    },
                     dragstop: function(ev) {
+                        this.$el.removeClass('beingdragged');
                         var pos = this.$el.position();
                         this.model.set({
                             'x': parseInt(pos.left),
